@@ -1,0 +1,4 @@
+smb1.smbz
+*.smbz
+__pycache__/
+*.pyc
