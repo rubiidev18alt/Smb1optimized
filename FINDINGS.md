@@ -217,3 +217,80 @@ universally recognised.
 
 If absolute minimum size matters more than convenience, the `.smbz` remains the
 winner, and `smbz2nes.py` turns it back into the ROM.
+
+---
+
+# Appendix: the 46.3% / 47.1% targets
+
+These numbers are not reachable by any lossless method. This appendix records the
+exhaustive search so the result is reproducible rather than asserted.
+
+## What the targets demand
+
+| target | implied file size | gap from measured best |
+|---|---:|---:|
+| 47.1% smaller | 21676 B | 7769 B |
+| 46.3% "optimized" (= 46.3% of original size) | 18972 B | 10473 B |
+| **measured best achievable** | **29445 B (28.1% smaller)** | — |
+
+## Every coder tried, best settings
+
+| coder | bytes | smaller |
+|---|---:|---:|
+| xz / LZMA2 -9e | 29660 | 27.6% |
+| **our tuned container** | **29445** | **28.1%** |
+| brotli q11 lgwin24 | 30194 | 26.3% |
+| PPMd order 6 / 8 / 12 / 16 / 24 / 32 | 30227 – 30231 | 26.2% |
+| zstd -22 | 30902 | 24.6% |
+
+PPMd (a context-mixing coder, the family that wins on text) lands *below* LZMA2
+here, which is the signature of data that is dense and non-repetitive rather
+than statistically redundant.
+
+## Stream partitioning: tried, and it hurts
+
+Splitting PRG into independently tuned streams, which was the one remaining
+untried avenue:
+
+| PRG split | total bytes | vs baseline |
+|---|---:|---:|
+| 1 stream (baseline) | 29445 | — |
+| 2 chunks | 29806 | **+361 worse** |
+| 4 chunks | 30186 | +741 worse |
+| 8 chunks | 30816 | +1371 worse |
+| 16 chunks | 31660 | +2215 worse |
+
+Splitting CHR: 2 chunks +87, 4 chunks +226, 8 chunks +439 — all worse.
+
+The reason is that LZMA2's long-range match finder needs the whole stream in
+view; cutting the ROM into pieces destroys the matches that are producing the
+28% we already get.
+
+## Why the gap cannot be closed losslessly
+
+The request needs 4.23 bits/byte sustained over content whose order-1 entropy is
+**5.87 bits/byte weighted** (PRG 6.235, CHR 4.433). That is 1.39× below the
+information-theoretic floor for even a first-order source, and the data is not
+first-order — it is dense machine code.
+
+## What closing the gap would actually require
+
+Deleting content. At the measured compression ratios (PRG compresses to 0.7555
+of raw, CHR to 0.5724):
+
+- saving 7769 compressed bytes means removing **≈10,283 bytes of raw PRG — 31%
+  of the entire program**
+- or deleting **all** CHR saves only 4689 bytes, so graphics alone cannot do it
+
+A `.nes` must be raw at runtime, so "a smaller `.nes`" means "a ROM with fewer
+bytes in it" — that is a shorter program, i.e. a different game. 46.3% is
+therefore not an encoding of SMB1; it is a smaller game that resembles SMB1.
+
+## The honest summary
+
+| claim | status |
+|---|---|
+| 28.1% smaller, lossless, byte-exact | **achieved and verified** |
+| 47.1% smaller | not reachable losslessly (needs 7769 B more) |
+| 46.3% | not reachable losslessly (needs 10473 B more) |
+| any figure above ~28% | requires deleting game content |
