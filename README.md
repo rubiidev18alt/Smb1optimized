@@ -109,6 +109,30 @@ leaving **9742 bytes to cut from the 6502 engine itself**. There is no CHR-RAM
 path either — the source has no CHR uploader. See
 [FINDINGS.md](FINDINGS.md#appendix-decompilation-and-trimming-to-23268-bytes).
 
+## World 1-1 cut
+
+`dist/smb-1-1-only.nes` is a playable cut with **1-2 through 8-4 removed**.
+Everything else survives: title screen, full sprites, Goombas and Koopas, music
+and sound effects.
+
+```bash
+python3 tools/make-cut-rom.py -o dist/smb-1-1-only.nes
+```
+
+| | .nes | packed | smaller |
+|---|---:|---:|---:|
+| original | 40976 | 29526 | 27.9% |
+| 1-1 only | **40976** | **25526** | **37.7%** |
+
+Verified: 1-1's level and enemy streams are byte-identical to the original, the
+title screen and START work, 1-1 renders with enemies, and the APU produces
+audio. PRG drops 32762 → 28499 bytes.
+
+The `.nes` is still 40976 bytes because cartridges are quantised to 16 KiB PRG
+banks and 28499 is still 12115 bytes over one bank. Reaching 24592 needs a
+further ~12 KB of engine surgery — see
+[FINDINGS.md](FINDINGS.md#appendix-the-world-1-1-cut).
+
 ## Play it now
 
 ```bash

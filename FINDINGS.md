@@ -404,3 +404,64 @@ Consequently this repo **does not vendor** that source or any generated assets.
 `tools/build-from-source.py` fetches it at a pinned commit on demand and works
 only from the ROM you already have. The rebuilt ROM and extracted assets land in
 `build/`, which is git-ignored.
+
+---
+
+# Appendix: the World 1-1 cut
+
+Built with `tools/make-cut-rom.py`. Levels 1-2 through 8-4 are removed by
+pointing their area and enemy streams at the terminator byte, so the level
+parser ends those areas immediately. Everything needed for 1-1 survives.
+
+## What is preserved (verified)
+
+| item | check |
+|---|---|
+| 1-1 object stream (101 bytes) | byte-identical to the original |
+| 1-1 enemy stream (30 bytes) | byte-identical to the original |
+| title screen + START | renders, accepts input |
+| World 1-1 with enemies | renders, 11 colours |
+| audio | 239,610 APU samples generated |
+| sprites | full CHR retained, Mario/Goomba/Koopa animate |
+
+## What was removed
+
+33 area streams and 33 enemy streams (everything except 1-1's) replaced with a
+terminator. PRG usage drops **32762 → 28499 bytes (−4263, −13.0%)**.
+
+## Why the .nes is still 40976 bytes
+
+A cartridge is quantised to 16 KiB PRG banks. 28499 bytes is still **12115 bytes
+over** a single bank, so the file cannot step down to 24592. The size stays put
+until another 12115 bytes come out of the 6502 engine.
+
+| variant | .nes size | packed (.smbz) | smaller |
+|---|---:|---:|---:|
+| original | 40976 | 29526 | 27.9% |
+| **1-1 only cut** | **40976** | **25526** | **37.7%** |
+
+So the cut pays off in compressed size even though the raw file is unchanged —
+because the removed level data was poorly compressible.
+
+## To actually reach 24592 (16 KiB PRG + 8 KiB CHR)
+
+Another **12115 bytes** must be deleted. Realistic targets, measured from linker
+labels:
+
+| subsystem | available |
+|---|---:|
+| all music + sound-effect data | 1529 B |
+| remaining enemy AI beyond Goomba/Koopa | several KB |
+| object/collision handlers for unused objects (Bowser, firebars, platforms) | several KB |
+| title screen, game-over, ending sequences | ~2 KB |
+
+That is genuine engine surgery: deleting code paths forces re-pointing every
+caller, and each removal risks breaking 1-1 itself. It is achievable but must be
+done incrementally with the 1-1 verification test after every step.
+
+## Honest status
+
+- 1-1-only cut **works** and is shipped as `dist/smb-1-1-only.nes`.
+- Its packed form is **37.7% smaller**, the best result so far.
+- It is **not** 24592 bytes; that requires the additional engine cuts above.
+- It is **not** the original game: 1-2 through 8-4 are gone by design.

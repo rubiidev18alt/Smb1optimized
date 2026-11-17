@@ -13,3 +13,6 @@ __pycache__/
 
 # source-build intermediates
 /build/
+
+# cut-ROM artifacts
+!dist/smb-1-1-only.smbz
