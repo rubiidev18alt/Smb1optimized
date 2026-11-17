@@ -133,13 +133,13 @@ banks and 28499 is still 12115 bytes over one bank. Reaching 24592 needs a
 further ~12 KB of engine surgery — see
 [FINDINGS.md](FINDINGS.md#appendix-the-world-1-1-cut).
 
-## Slim cut (levels + audio removed, restart fix)
+## Slim cut (levels + audio removed, game over on completion)
 
 `dist/smb-slim.nes` removes 1-2 through 8-4 **and** all music/sound effects, and
 fixes the black screen after finishing a level.
 
 ```bash
-python3 tools/make-slim-rom.py --only levels,music,restart,enemies,enemyart
+python3 tools/make-slim-rom.py --only levels,music,gameover,enemies,enemyart
 ```
 
 Each cut is measured independently:
@@ -148,15 +148,16 @@ Each cut is measured independently:
 |---|---:|
 | `levels` — 1-2…8-4 removed | 4263 B |
 | `music` — engine stubbed + streams dropped | 1610 B |
-| `restart` — completion restarts the run | −11 B |
+| `gameover` — completion triggers GAME OVER | 4 B |
 | `enemies` — stub 14 unused handlers | 361 B |
 | `enemyart` — drop 39 unused enemy sprite rows | 190 B |
-| **total** | **6413 B (19.6%)** |
+| **total** | **6428 B (19.6%)** |
 
-**Level-completion black screen: fixed.** `handler_finish_world` advanced to the
-next world, which has no data. It now restarts 1-1. Verified by driving the
-victory path: without the fix `world=1` and a black screen; with it `world=0` and
-the screen 85% alive.
+**Finishing 1-1 triggers GAME OVER.** `handler_finish_world` used to advance to
+the next world, which no longer exists and produced a garbage level. It now
+enters game-over mode. Traced frame by frame: mode 2 (victory) → **mode 3 (GAME
+OVER screen)** → mode 0 (title). The classic screen renders with the HUD intact
+and the sequence completes on its own.
 
 **Title-screen removal: tried, rejected.** Skipping the title also skips VRAM
 initialisation, so 1-1 draws garbage metatiles (bricks fell from 3535 px to 24).
@@ -170,7 +171,7 @@ removing any renumbers what 1-1 draws.
 |---|---:|---:|---:|
 | original | 40976 | 29526 | 27.9% |
 | 1-1 only | 40976 | 25526 | 37.7% |
-| **slim + enemy pass** | **40976** | **23969** | **41.5%** |
+| **slim + enemy pass** | **40976** | **23947** | **41.6%** |
 
 ## Play it now
 

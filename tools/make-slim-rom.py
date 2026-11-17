@@ -34,7 +34,7 @@ SRC = os.path.join(BUILD, "src", "smb1_src")
 TOOLBIN = os.path.join(BUILD, "cc65", "bin")
 PRG_BASE = 0x8000
 
-ALL_CUTS = ("levels", "music", "restart", "enemies", "enemyart", "title")
+ALL_CUTS = ("levels", "music", "gameover", "restart", "enemies", "enemyart", "title")
 KEEP_AREA = "off_ground_area_6_objects"      # 1-1
 KEEP_ENEMIES = "off_ground_area_6_enemies"
 AREA_ASSET = "con_course_area_streams_asset"
@@ -314,9 +314,36 @@ def cut_enemy_art(src):
     open(path, "w").write(rebuilt)
 
 
+
+def cut_gameover(src):
+    """Completing a level triggers the game-over sequence.
+
+    Advancing to the next world would load an area that no longer exists, which
+    is the garbage level / black screen. Game over is a real, tested path: it
+    shows the game-over screen, then returns to the title screen.
+    """
+    modes = os.path.join(src, "game", "modes.asm")
+    def transform(t):
+        target = ("    INC ram_world_number  ; increment world number to move onto the next world\n"
+                  "    JSR sub_load_area_pointer  ; get area address offset for the next area\n"
+                  "    INC ram_fetch_new_game_timer_flag  ; set flag to load game timer from header\n"
+                  "    LDA #con_mode_game\n"
+                  "    STA ram_oper_mode  ; set mode of operation to game mode")
+        if target not in t:
+            raise SystemExit("error: could not find handler_finish_world advance block")
+        # 1-2 onward is removed, so finishing 1-1 ends the run instead of
+        # loading an area that is no longer there.
+        replacement = ("    LDA #con_mode_game_over\n"
+                       "    STA ram_oper_mode\n"
+                       "    LDA #$00\n"
+                       "    STA ram_oper_mode_task")
+        return t.replace(target, replacement, 1)
+    _patch_file(modes, transform)
+
+
 CUT_FUNCS = {"levels": cut_levels, "music": cut_music, "enemies": cut_enemies,
              "enemyart": cut_enemy_art,
-             "title": cut_title, "restart": cut_restart}
+             "title": cut_title, "restart": cut_restart, "gameover": cut_gameover}
 
 
 # --------------------------------------------------------------------------- #

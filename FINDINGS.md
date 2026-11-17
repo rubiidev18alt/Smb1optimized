@@ -615,3 +615,47 @@ Remaining realistic targets for the last ~10 KB:
 
 None of these is individually large enough to close the gap; reaching 24592
 requires most of them.
+
+---
+
+# Appendix: level completion now triggers GAME OVER
+
+Advancing to the next world after finishing 1-1 loaded an area that no longer
+exists, producing a garbage level. Game over is the right replacement: it is a
+real, tested path that shows the game-over screen and then returns to the title
+screen.
+
+`handler_finish_world` in `game/modes.asm` now does:
+
+```
+LDA #con_mode_game_over / STA ram_oper_mode / LDA #$00 / STA ram_oper_mode_task
+```
+
+replacing the world-increment / area-reload / mode-game sequence.
+
+## Verified by tracing the mode byte frame by frame
+
+| frame | mode | meaning |
+|---:|---:|---|
+| 0 | 2 | victory (level finished) |
+| **364** | **3** | **game over screen** |
+| 742 | 0 | back to title screen |
+
+Screenshot at mode 3 shows the classic **GAME OVER** screen with the HUD intact.
+The sequence completes on its own with no input, so there is no hang and no black
+frame.
+
+The `gameover` cut also saves **4 bytes** — the replaced sequence was slightly
+larger than the two stores that replace it.
+
+## Final state
+
+| artifact | .nes | packed | smaller |
+|---|---:|---:|---:|
+| original | 40976 | 29526 | 27.9% |
+| 1-1 cut (advance → black screen) | 40976 | 25526 | 37.7% |
+| slim, restart variant | 40976 | 23969 | 41.5% |
+| **slim, game-over variant** | **40976** | **23947** | **41.6%** |
+
+Cut stack: `levels`, `music`, `gameover`, `enemies`, `enemyart` —
+PRG 32762 → 26334 bytes (19.6% smaller), still 9950 bytes over one 16 KiB bank.
