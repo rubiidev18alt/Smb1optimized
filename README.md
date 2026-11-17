@@ -139,7 +139,7 @@ further ~12 KB of engine surgery — see
 fixes the black screen after finishing a level.
 
 ```bash
-python3 tools/make-slim-rom.py --only levels,music,restart
+python3 tools/make-slim-rom.py --only levels,music,restart,enemies,enemyart
 ```
 
 Each cut is measured independently:
@@ -149,7 +149,9 @@ Each cut is measured independently:
 | `levels` — 1-2…8-4 removed | 4263 B |
 | `music` — engine stubbed + streams dropped | 1610 B |
 | `restart` — completion restarts the run | −11 B |
-| **total** | **5862 B (17.9%)** |
+| `enemies` — stub 14 unused handlers | 361 B |
+| `enemyart` — drop 39 unused enemy sprite rows | 190 B |
+| **total** | **6413 B (19.6%)** |
 
 **Level-completion black screen: fixed.** `handler_finish_world` advanced to the
 next world, which has no data. It now restarts 1-1. Verified by driving the
@@ -168,7 +170,7 @@ removing any renumbers what 1-1 draws.
 |---|---:|---:|---:|
 | original | 40976 | 29526 | 27.9% |
 | 1-1 only | 40976 | 25526 | 37.7% |
-| **slim** | **40976** | **24351** | **40.6%** |
+| **slim + enemy pass** | **40976** | **23969** | **41.5%** |
 
 ## Play it now
 

@@ -34,7 +34,7 @@ SRC = os.path.join(BUILD, "src", "smb1_src")
 TOOLBIN = os.path.join(BUILD, "cc65", "bin")
 PRG_BASE = 0x8000
 
-ALL_CUTS = ("levels", "music", "title", "restart")
+ALL_CUTS = ("levels", "music", "restart", "enemies", "enemyart", "title")
 KEEP_AREA = "off_ground_area_6_objects"      # 1-1
 KEEP_ENEMIES = "off_ground_area_6_enemies"
 AREA_ASSET = "con_course_area_streams_asset"
@@ -192,7 +192,130 @@ def cut_restart(src):
     _patch_file(modes, transform)
 
 
-CUT_FUNCS = {"levels": cut_levels, "music": cut_music,
+
+# Enemy/object handlers that World 1-1 never reaches. 1-1 spawns Goombas and a
+# Koopa only (object ids $00-$14, the "normal enemy" path), so everything for
+# Bowser, firebars, platforms, vines, fireworks, jumpsprings and warp zones is
+# unreachable. Each is replaced by an immediate RTS; the body is kept inside
+# `.if 0` so nested .if/.endif pairs stay balanced.
+UNUSED_HANDLERS = [
+    "handler_run_bowser_flame",
+    "handler_run_fireworks",
+    "handler_run_firebar",
+    "handler_run_large_platform",
+    "handler_run_small_platform",
+    "handler_run_bowser",
+    "handler_run_vine_object",
+    "handler_run_star_flag",
+    "handler_process_jumpspring",
+    "handler_run_warp_zone_object",
+    "handler_move_hammer_bro",
+    "sub_draw_vine",
+    "sub_draw_explosion_fireworks",
+    "sub_draw_small_platform",
+]
+
+
+def _stub_label(path, label):
+    """Replace a routine body with RTS, keeping the label address valid."""
+    lines = open(path, errors="replace").read().splitlines(keepends=True)
+    start = None
+    for i, line in enumerate(lines):
+        if line.startswith(label + ":"):
+            start = i
+            break
+    if start is None:
+        return False
+    end = None
+    for j in range(start + 1, len(lines)):
+        if re.match(r"^[A-Za-z_.][A-Za-z0-9_.]*:\s*$", lines[j]):
+            end = j
+            break
+    if end is None:
+        return False
+    body = lines[start + 1:end]
+    replaced = ([lines[start],
+                 "    RTS  ; unreachable in the 1-1 cut\n",
+                 "    .if 0\n"] + body + ["    .endif\n"])
+    open(path, "w").write("".join(lines[:start] + replaced + lines[end:]))
+    return True
+
+
+def cut_enemies(src):
+    """Stub the enemy/object handlers that World 1-1 cannot reach."""
+    targets = list(UNUSED_HANDLERS)
+    stubbed = 0
+    for root, _dirs, files in os.walk(src):
+        for name in files:
+            if not name.endswith(".asm"):
+                continue
+            path = os.path.join(root, name)
+            text = open(path, errors="replace").read()
+            for label in list(targets):
+                if label + ":" in text:
+                    if _stub_label(path, label):
+                        stubbed += 1
+                        targets.remove(label)
+    if not stubbed:
+        raise SystemExit("error: no unused enemy handlers were found to stub")
+    return stubbed
+
+
+
+# Enemy sprite rows reachable in World 1-1: koopa (2,3), goomba (14),
+# shells (15-18), defeated goomba (23). Everything else in the flat tile table
+# is for types 1-1 never spawns, so those rows are dropped and their offsets
+# re-pointed at the goomba row.
+KEEP_TILE_ROWS = (2, 3, 14, 15, 16, 17, 18, 23)
+
+
+def cut_enemy_art(src):
+    """Shrink tbl_enemy_graphics_tiles to the frames 1-1 can reach."""
+    path = os.path.join(src, "rendering", "actors", "enemies.asm")
+    text = open(path, errors="replace").read()
+
+    m = re.search(r"tbl_enemy_graphics_tiles:\n(.*?)\n\n(tbl_enemy_graphics_offsets:)",
+                  text, re.S)
+    if not m:
+        raise SystemExit("error: enemy graphics tables not found")
+
+    rows = []
+    for line in m.group(1).splitlines():
+        if ".byte" in line and not line.strip().startswith(";"):
+            rows.append(line)
+    if len(rows) < 24:
+        raise SystemExit("error: unexpected enemy tile table shape (%d rows)" % len(rows))
+
+    # Rebuild: only the rows 1-1 uses, in original order, each 6 bytes.
+    keep = [rows[i] for i in KEEP_TILE_ROWS]
+    new_tiles = "tbl_enemy_graphics_tiles:\n" + "\n".join(keep) + "\n"
+
+    # Re-point the offsets: kept rows get sequential offsets, others alias goomba.
+    goomba_off = KEEP_TILE_ROWS.index(14) * 6
+    om = re.search(r"tbl_enemy_graphics_offsets:\n(.*?)\n\n", text[m.end(1):], re.S)
+    new_offsets = []
+    idx = 0
+    for i in range(47):
+        if i in KEEP_TILE_ROWS:
+            new_offsets.append(KEEP_TILE_ROWS.index(i) * 6)
+        else:
+            new_offsets.append(goomba_off)
+    off_lines = []
+    for i in range(0, len(new_offsets), 8):
+        chunk = ", ".join("$%02x" % v for v in new_offsets[i:i + 8])
+        off_lines.append("    .byte " + chunk)
+    new_off_block = "tbl_enemy_graphics_offsets:\n" + "\n".join(off_lines) + "\n"
+
+    # Replace both blocks in one pass.
+    start_off = m.end(1) + 2
+    end_off = start_off + len(om.group(0))
+    rebuilt = (text[:m.start()] + new_tiles + "\n" + new_off_block
+               + text[end_off:])
+    open(path, "w").write(rebuilt)
+
+
+CUT_FUNCS = {"levels": cut_levels, "music": cut_music, "enemies": cut_enemies,
+             "enemyart": cut_enemy_art,
              "title": cut_title, "restart": cut_restart}
 
 

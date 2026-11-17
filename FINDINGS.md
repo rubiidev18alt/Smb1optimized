@@ -547,3 +547,71 @@ PRG is 26900 bytes — still **10516 bytes over** a single 16 KiB bank, so the
 `.nes` remains 40976 bytes. Getting to 24592 needs those 10516 bytes out of the
 engine: unused enemy AI, unused object/collision handlers, and the title/demo
 code together with its VRAM initialisation.
+
+---
+
+# Appendix: the enemy-AI pass
+
+Two more cuts, each measured independently. Both keep Goomba and Koopa behaviour
+intact, because World 1-1 only ever spawns object ids `$00-$14` — the "normal
+enemy" path — plus shells.
+
+## What 1-1 actually uses
+
+The 1-1 enemy stream (`base_course_enemy_streams.bin` at `$191`, 30 bytes) holds
+**positions**, not types. Types come from the runtime dispatch table, and 1-1
+reaches only:
+
+- `handler_run_normal_enemy` (objects `$00-$14`): Goomba, Koopa, shells
+- its movement table: walkers, plus shell behaviour
+
+Everything else in the dispatch table is unreachable.
+
+## The cuts
+
+| cut | PRG saved | what it does |
+|---|---:|---|
+| `enemies` | **361 B** | stubs 14 handlers: Bowser, Bowser flame, firebar, fireworks, large/small platform, vine, star flag, jumpspring, warp zone, Hammer Bro, plus the vine/explosion/platform drawing routines |
+| `enemyart` | **190 B** | shrinks `tbl_enemy_graphics_tiles` to the 8 rows 1-1 can reach (koopa ×2, goomba, 4 shell rows, defeated goomba) and re-points the 47-entry offset table at them |
+| **total** | **551 B** | cumulative now **6413 B / 19.6%** |
+
+Handlers are stubbed to `RTS` with the body retained inside `.if 0`, so nested
+`.if/.endif` pairs stay balanced — the same technique the audio cut needed.
+
+## Verification
+
+| check | result |
+|---|---|
+| 1-1 renders | 11 colours, sky 44432 px, bricks 3535 px (unchanged) |
+| enemies present | **27 peak sprites on screen**, identical to the pre-cut build |
+| boots and plays | PASS |
+| packed round-trip | byte-identical |
+
+The sprite count matching exactly is the key check: the art table rewrite did not
+misalign any enemy frame.
+
+## Final state
+
+| artifact | .nes | packed | smaller |
+|---|---:|---:|---:|
+| original | 40976 | 29526 | 27.9% |
+| 1-1 cut | 40976 | 25526 | 37.7% |
+| slim (no enemy pass) | 40976 | 24351 | 40.6% |
+| **slim + enemy pass** | **40976** | **23969** | **41.5%** |
+
+PRG is 26349 bytes — still **9965 bytes over** one 16 KiB bank. The enemy pass
+bought 551 bytes, which is honest but small: the handlers for unused enemy types
+are individually compact, and much of the remaining bulk is shared framework
+(rendering, collisions, level parser) that 1-1 still needs.
+
+Remaining realistic targets for the last ~10 KB:
+
+| target | rough size | risk |
+|---|---:|---|
+| title/demo + its VRAM init | ~2 KB | high — must reimplement the init elsewhere |
+| collision pairs for unused object types | ~1-2 KB | medium |
+| ending / game-over sequences | ~1 KB | low-medium |
+| level parser paths for unused objects | ~1-2 KB | medium |
+
+None of these is individually large enough to close the gap; reaching 24592
+requires most of them.
