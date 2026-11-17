@@ -16,7 +16,8 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
-const ROM = path.join(ROOT, process.env.ROM || "Super Mario Bros. (JU) (PRG0) [!].nes");
+// An absolute path is used as-is; a bare name is resolved against the repo root.
+const ROM = path.resolve(ROOT, process.env.ROM || "Super Mario Bros. (JU) (PRG0) [!].nes");
 const FRAMES = Number(process.argv[2] || 300);
 
 /*

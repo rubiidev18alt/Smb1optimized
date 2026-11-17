@@ -154,3 +154,66 @@ If you want to pursue the risky path anyway, the highest-yield target is
 hand-optimising hot routines in PRG (`$A000–$B000` is the densest code region at
 H1≈6.8). That is a multi-week reverse-engineering project on its own, and it will
 still not approach the number in the original request.
+
+---
+
+# Appendix: can the .nes itself stay compressed?
+
+**Direct answer: no for a `.nes` file; yes if you accept a different container.**
+Three separate constraints make a compressed-and-directly-executable `.nes`
+impossible, and they are structural rather than a matter of effort.
+
+## 1. Format constraint
+
+An emulator parses a `.nes` as 16 header bytes followed by exactly
+`header[4] * 16384` raw PRG bytes and `header[5] * 8192` raw CHR bytes. If those
+bytes were entropy-coded the CPU would fetch garbage as opcodes on the first
+instruction. The container and the payload cannot both be compressed.
+
+## 2. Hardware constraint (the real blocker)
+
+To execute compressed code you must first decompress it into **writable**
+memory. On an NROM cartridge — which is what SMB1 is, mapper 0 — the writable
+memory totals:
+
+| region | size |
+|---|---:|
+| internal RAM (`$0000-$07FF`) | 2048 bytes |
+| PRG RAM on the cartridge | **0 bytes** |
+| CHR-RAM | **0 bytes** (CHR is ROM here) |
+| **total writable** | **2048 bytes** |
+
+PRG is 32768 bytes, so the decompressed image needs a place to live and the
+largest available writable region is 16× too small. There is nowhere to put it.
+
+Even granting the space, the decompressor must itself already be raw,
+uncompressed code sitting at `$8000` — so a bootstrap loader always survives
+compression. You can never compress *everything*.
+
+## 3. This has been asked and answered before
+
+Cartridges that do exactly this exist: the NES has mappers with **on-cartridge
+decompression hardware** (MMC5's ExGrafix, and bootleg "Trainer + compressed
+CHR" boards). They require **a new cartridge**, i.e. a different mapper with
+extra silicon. SMB1 is mapper 0 with no such hardware, so emulating that
+behaviour would mean shipping a modified ROM on a different mapper — which is a
+different program, not a smaller encoding of this one.
+
+## What you *can* have
+
+| artifact | size | compressed? | runs directly? |
+|---|---:|---|---|
+| `dist/super-mario-bros.nes` | 40976 | no | **yes**, any emulator |
+| `dist/super-mario-bros.smbz` | **29526** | **yes, 27.9%** | no, needs the converter |
+| `dist/smb-optimized.zip` | 31459 | yes, 23.2% | **yes**, in Mesen / FCEUX / RetroArch |
+| `7z` of the `.nes` | 29678 | yes, 27.6% | yes, in FCEUX / Mesen |
+
+The **zip** is the practical answer to the request: it is a genuinely compressed
+single file that you can hand to an emulator without unpacking anything.
+Mesen opens `.zip`, `.7z` and `.rar`; FCEUX opens `.zip` and `.7z`; RetroArch
+opens zips itself. Deflate reaches 23.2% versus LZMA2's 27.9%, so the zip is
+roughly 2 KB larger than the `.smbz` — that is the price of the format being
+universally recognised.
+
+If absolute minimum size matters more than convenience, the `.smbz` remains the
+winner, and `smbz2nes.py` turns it back into the ROM.

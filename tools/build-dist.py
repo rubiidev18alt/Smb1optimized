@@ -7,6 +7,7 @@ Creates:
   dist/super-mario-bros.nes         the ROM itself, runnable in any emulator
   dist/smbz2nes.py                  the .smbz -> .nes converter (stdlib only)
   dist/unpack.py                    minimal two-argument extractor
+  dist/smb-optimized.zip            the ROM zipped (compressed, loads directly)
   dist/SHA256SUMS                   checksums
 
 Then verifies the whole chain: .nes -> .smbz -> .nes must reproduce the original
@@ -29,6 +30,20 @@ import rompack  # noqa: E402
 ROM_NAME = "Super Mario Bros. (JU) (PRG0) [!].nes"
 OUT_PACKED = "super-mario-bros.smbz"
 OUT_NES = "super-mario-bros.nes"
+OUT_ZIP = "smb-optimized.zip"
+
+
+def _zip_ok(path, expected):
+    """A zip an emulator can open: exactly one .nes entry, byte-identical."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(path) as z:
+            names = [n for n in z.namelist() if n.lower().endswith(".nes")]
+            if len(names) != 1:
+                return False
+            return z.read(names[0]) == expected
+    except (OSError, zipfile.BadZipFile):
+        return False
 
 
 def sha256(data):
@@ -69,10 +84,16 @@ def main():
         if os.path.abspath(src) != os.path.abspath(os.path.join(DIST, name)):
             shutil.copyfile(src, os.path.join(DIST, name))
 
+    # 3b. zipped ROM: compressed AND directly loadable by most emulators
+    import zipfile
+    zip_path = os.path.join(DIST, OUT_ZIP)
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+        z.writestr("smb-optimized.nes", original)
+
     # 4. checksums
     sums_path = os.path.join(DIST, "SHA256SUMS")
     lines = []
-    for name in (OUT_PACKED, OUT_NES, "smbz2nes.py", "unpack.py"):
+    for name in (OUT_PACKED, OUT_NES, OUT_ZIP, "smbz2nes.py", "unpack.py"):
         with open(os.path.join(DIST, name), "rb") as f:
             lines.append("%s  %s\n" % (sha256(f.read()), name))
     with open(sums_path, "w") as f:
@@ -87,6 +108,8 @@ def main():
         ("packed round-trips to the original ROM", restored == original),
         ("packed file is smaller than the ROM", len(packed) < len(original)),
         ("stored .nes matches the original", open(nes_path, "rb").read() == original),
+        ("zip holds exactly one .nes and it is the original",
+         _zip_ok(zip_path, original)),
     ]
 
     print("built dist/")
@@ -95,6 +118,10 @@ def main():
     print("  %-28s %7d bytes  (%.1f%% of original, %.1f%% smaller)"
           % (OUT_PACKED, len(packed), 100.0 * len(packed) / len(original),
              100.0 - 100.0 * len(packed) / len(original)))
+    zsz = os.path.getsize(zip_path)
+    print("  %-28s %7d bytes  (%.1f%% of original, %.1f%% smaller, loads directly)"
+          % (OUT_ZIP, zsz, 100.0 * zsz / len(original),
+             100.0 - 100.0 * zsz / len(original)))
     print("  %-28s %7s        %s" % ("smbz2nes.py", "", "stdlib-only converter"))
     print("  %-28s %7s        %s" % ("unpack.py", "", "minimal extractor"))
     print()

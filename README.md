@@ -16,6 +16,7 @@ Everything you need is committed in [`dist/`](dist/):
 |---|---:|---|
 | [`super-mario-bros.nes`](dist/super-mario-bros.nes) | 40976 B | the ROM — runs in any NES emulator |
 | [`super-mario-bros.smbz`](dist/super-mario-bros.smbz) | 29526 B | the packed form, 27.9% smaller |
+| [`smb-optimized.zip`](dist/smb-optimized.zip) | 31459 B | **compressed and loads directly** in Mesen/FCEUX/RetroArch |
 | [`smbz2nes.py`](dist/smbz2nes.py) | 12 KB | the `.smbz` → `.nes` converter, stdlib only |
 | [`unpack.py`](dist/unpack.py) | 2.9 KB | minimal extractor, same format |
 | [`SHA256SUMS`](dist/SHA256SUMS) | — | checksums for both |
@@ -59,6 +60,19 @@ f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de  super-mario-br
 ```
 
 Rebuild the artifacts from the source ROM at any time with `npm run dist`.
+
+### Why can the .nes not stay compressed?
+
+It cannot, and the reason is the hardware rather than the file format. Running
+compressed code requires decompressing it into writable memory first, and an
+NROM cartridge — which SMB1 is — has only 2048 bytes of writable RAM total, for
+a 32768-byte PRG image. There is 16× too little space, and the decompressor
+itself would still have to be raw code at `$8000`.
+
+The practical answers are the two above: the **zip** (23.2% smaller, opens
+directly in most emulators) or the **`.smbz`** (27.9% smaller, needs the
+converter). Full reasoning in
+[FINDINGS.md](FINDINGS.md#appendix-can-the-nes-itself-stay-compressed).
 
 ## Play it now
 
