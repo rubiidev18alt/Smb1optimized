@@ -151,7 +151,8 @@ Each cut is measured independently:
 | `gameover` — completion triggers GAME OVER | 4 B |
 | `enemies` — stub 14 unused handlers | 361 B |
 | `enemyart` — drop 39 unused enemy sprite rows | 190 B |
-| **total** | **6428 B (19.6%)** |
+| **total PRG** | **6428 B (19.6%)** |
+| `chr` — blank the 267 pattern tiles nothing draws | **−5348 B packed** |
 
 **Finishing 1-1 triggers GAME OVER.** `handler_finish_world` used to advance to
 the next world, which no longer exists and produced a garbage level. It now
@@ -163,15 +164,43 @@ and the sequence completes on its own.
 initialisation, so 1-1 draws garbage metatiles (bricks fell from 3535 px to 24).
 It also overflows PRG by 2 bytes. Not enabled.
 
-**CHR: nothing removable.** The PPU addresses tiles by index and the format
-emits 8 KiB per bank; 512 tiles with 2 blank and 5 duplicates is 80 bytes, and
-removing any renumbers what 1-1 draws.
+**CHR blanking is the biggest single win, but it is not "removing CHR".** The
+PPU addresses tiles by index, so the 8 KiB bank cannot shrink and no tile can be
+renumbered. What the pass does instead is zero the 16 bytes of every tile the
+game never draws: 267 of 512 tiles become runs of zeros, CHR compresses from
+about 4.7 KB to 1.4 KB, and the `.nes` loses nothing. The ROM is byte-for-byte a
+different file but pixel-for-pixel the same game.
+
+Getting that safe took three fixes, all of which used to produce a broken ROM:
+
+1. **Pattern-table direction.** SMB draws the background from pattern table 1
+   (`$1000`) and sprites from table 0. Mapping that backwards blanks the terrain
+   and the HUD — bricks went from 3535 px to 0.
+2. **The title logo is not graphics in the usual sense.** 
+   `handler_copy_title_screen_from_chr` copies the raw bytes of background tiles
+   236–255 through `$2007` and decodes them as the logo. Those tiles never appear
+   in a nametable, so a nametable harvest calls them unused and blanking them
+   deletes the logo.
+3. **Harvesting is not a proof.** Sampling nametables and OAM missed tiles that
+   are only visible at one scroll position (background tile 3) and a Mario sprite
+   tile. The builder now *blank optimistically and then repair*: it runs the
+   blanked ROM, reports every tile that is on screen while its bytes are zero,
+   restores those, and finally refuses to emit a ROM unless the rendered screens
+   hash identically to the unblanked reference.
+
+`tools/chr-probe.js` fingerprints the title, 1-1 and the GAME OVER screen;
+`tools/rom-timeline.js` is the single input sequence those checks share. The
+smoke test now also fails if a tile the original ROM drew is blank.
 
 | artifact | .nes | packed | smaller |
 |---|---:|---:|---:|
 | original | 40976 | 29526 | 27.9% |
 | 1-1 only | 40976 | 25526 | 37.7% |
-| **slim + enemy pass** | **40976** | **23947** | **41.6%** |
+| slim, no CHR pass | 40976 | 23947 | 41.6% |
+| **slim + CHR blanking** | **40976** | **21500** | **47.5%** |
+
+The whole 1-1 run is pixel-identical to the same build without the CHR pass:
+0 differing pixels over 3000 emulated frames.
 
 ## Play it now
 

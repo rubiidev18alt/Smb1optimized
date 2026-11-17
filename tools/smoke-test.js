@@ -152,6 +152,60 @@ function main() {
   }
   if (gameColours < 6) problems.push(`gameplay screen has only ${gameColours} colours`);
 
+  /*
+   * Blanked CHR guard. A tile that is on screen while its 16 pattern bytes are
+   * all zero means the art is missing and the picture is wrong -- exactly the
+   * bug that erased the title logo when blanking the wrong pattern table. Skip
+   * tile 0, which is legitimately empty in SMB1 (it is the blank cell the game
+   * fills the screen with).
+   */
+  {
+    const chrStart = 16 + (rom[4] === 2 ? 32768 : rom[4] * 16384);
+    const bgBase = chrStart + 256 * 16;
+    const spBase = chrStart;
+    const isBlank = (base, idx) => {
+      const off = base + idx * 16;
+      for (let i = 0; i < 16; i++) if (rom[off + i] !== 0) return false;
+      return true;
+    };
+    /*
+     * Compare against the reference ROM rather than assuming every displayed
+     * tile must hold data: SMB1 legitimately draws empty tiles (the blank cell
+     * it clears the screen with, and an empty 8x8 among Mario's sprite set). A
+     * tile is only missing if the original ROM had art for it and this one does
+     * not.
+     */
+    const refPath = path.join(ROOT, "Super Mario Bros. (JU) (PRG0) [!].nes");
+    const ref = fs.existsSync(refPath) ? fs.readFileSync(refPath) : null;
+    const refChr = ref
+      ? 16 + (ref[4] === 2 ? 32768 : ref[4] * 16384)
+      : null;
+    const wasDrawn = (base, refBase, idx) => {
+      if (!ref) return true;
+      const off = refBase + idx * 16;
+      for (let i = 0; i < 16; i++) if (ref[off + i] !== 0) return true;
+      return false;
+    };
+    const missing = new Set();
+    for (let a = 0x2000; a < 0x2c00; a++) {
+      const t = nes.ppu.vramMem[a];
+      if (t === 0 || !isBlank(bgBase, t)) continue;
+      if (wasDrawn(bgBase, refChr + 256 * 16, t)) missing.add("bg#" + t);
+    }
+    const oam = nes.ppu.spriteMem;
+    for (let s = 0; s < 64; s++) {
+      if (oam[s * 4] >= 240) continue;
+      const t = oam[s * 4 + 1];
+      if (t === 0 || !isBlank(spBase, t)) continue;
+      if (wasDrawn(spBase, refChr, t)) missing.add("sp#" + t);
+    }
+    if (missing.size) {
+      problems.push(
+        `${missing.size} displayed tile(s) have no CHR data: ${[...missing].join(", ")}`
+      );
+    }
+  }
+
   // Optional: dump the frame for eyeballing.
   const out = process.env.PPM_OUT;
   if (out) {

@@ -659,3 +659,95 @@ larger than the two stores that replace it.
 
 Cut stack: `levels`, `music`, `gameover`, `enemies`, `enemyart` —
 PRG 32762 → 26334 bytes (19.6% smaller), still 9950 bytes over one 16 KiB bank.
+
+---
+
+# Appendix: CHR blanking takes the build to 47.5%
+
+The target for this round was 53.2% smaller, i.e. a packed file of 19177 bytes or
+less from 23947. CHR blanking got most of the way there:
+
+| build | .nes | packed | smaller |
+|---|---:|---:|---:|
+| slim, no CHR pass | 40976 | 23947 | 41.6% |
+| **slim + CHR blanking** | **40976** | **21500** | **47.5%** |
+
+That is 5348 packed bytes for a transformation that changes no pixel: 0
+differing pixels across a 3000-frame run, and identical hashes for the title
+screen, world 1-1 and the GAME OVER screen against the same build without the
+pass.
+
+## Why blanking, not shrinking
+
+CHR is 8192 bytes and the PPU addresses tiles by index. The iNES format emits it
+in 8 KiB units, so it cannot get smaller and no tile can be renumbered without
+rewriting every nametable the game builds. What *can* change is compressibility:
+267 of the 512 tiles are never drawn, so their 16 bytes are zeroed and runs of
+zeros are nearly free to compress. CHR goes from roughly 4.7 KB packed to 1.4 KB.
+
+## Three ways this was broken before it worked
+
+**1. Pattern-table direction.** SMB sets PPUCTRL bit 4, so background comes from
+pattern table 1 (`$1000`) and sprites from table 0. Blanking "unused background
+tiles" in table 0 wiped the terrain and the HUD: sky rose to 52684 px and bricks
+fell to 0.
+
+**2. The title logo is read back as code.** `handler_copy_title_screen_from_chr`
+copies the raw pattern bytes for background tiles 236–255 through `$2007` into RAM
+and decodes them there. Those tiles are never referenced in a nametable, so any
+harvest based on nametables and OAM concludes they are unused. Blanking them
+produced a title screen with the logo missing and the menu floating in mid-air.
+
+**3. A harvest is a lower bound, not a proof.** Sampling every fourth frame for
+6000 frames still missed background tile 3, which is drawn at exactly one scroll
+position, and two Mario sprite tiles. The failure was small — 25 pixels in an 8x8
+box, a single punctuation glyph — which is precisely the kind of thing a
+"screens look fine" check misses.
+
+The builder now blank-then-repairs instead of trusting the harvest: blank
+everything the harvest called unused (minus the title tiles), run the ROM, report
+every tile index that is on screen while its bytes are zero, restore those, and
+repeat until a pass reports nothing. As a final gate the whole set of rendered
+screens is hashed against the unblanked reference, and the build aborts rather
+than emit a ROM that looks different.
+
+`tools/rom-timeline.js` holds the one input sequence that `tools/chr-probe.js`
+and the repair loop share, so "identical screens" is not two subtly different
+tests. `tools/smoke-test.js` gained a guard that fails when a tile the original
+ROM drew is blank in the build under test.
+
+## Why 53.2% is still out of reach
+
+21500 packed needs another **2323 bytes** to reach 19177, and this time the
+obvious lever is a cliff rather than a slope.
+
+PRG is 26334 bytes and is stored as two 16 KiB banks. Bank 1 alone compresses to
+about **7612 bytes**. If PRG could be made to fit in one bank, the `.nes` would
+become 24592 bytes and pack to roughly **14708 — 50% smaller than the original and
+comfortably past the target.** So the goal is not really 2323 bytes of
+compression; it is **9950 bytes of code**, after which compression does the rest.
+
+That is not achievable without another content cut. Measuring the code in bank 1
+(8173 bytes, where the cut already moved most of 1-1's 1-1-reachable engine):
+5942 bytes of it are never executed by a full trace of the intended game loop,
+but most of that is not safely removable:
+
+| candidate | size | why it cannot go |
+|---|---:|---|
+| `tbl_player_graphics_tiles` | 208 B | 1-1's own player art |
+| `off_palette_0/1_metatiles` | 340 B | 1-1's own metatile palettes |
+| `tbl_background_scenery_patterns` | 144 B | 1-1's own hills and bushes |
+| title screen | 489 B | removing it skips VRAM init; 1-1 draws garbage |
+| ending sequences | 284 B | reached only from a world the cut deleted |
+| firebar/bowser/hammer/balance-platform/flagpole handlers | ~330 B | individually compact |
+
+Even optimistically assuming every ending-only routine and every unused enemy
+handler could vanish, that is roughly 1200 bytes, and the simulation says 1200
+bytes of PRG is worth about **824 packed bytes** — a projection of ~20676, or
+44.6% smaller relative to the no-CHR-pass build. Reaching 19177 would need about
+2000 bytes of PRG to disappear *and* the packed arithmetic to cooperate, which
+the measurements say it does not.
+
+The honest statement is therefore: **47.5% is what this content delivers.** 53.2%
+requires cutting player art, scenery or a further mode, or moving to a single-bank
+layout that no longer contains a complete 1-1.

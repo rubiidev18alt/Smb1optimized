@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node tools/smoke-test.js 300",
+    "test:title": "node tools/chr-probe.js dist/smb-slim.nes --dead",
     "test:page": "node tools/page-test.js",
     "pack": "python3 tools/rompack.py pack \"Super Mario Bros. (JU) (PRG0) [!].nes\" -o smb1.smbz",
     "analyze": "python3 tools/rompack.py analyze \"Super Mario Bros. (JU) (PRG0) [!].nes\"",
@@ -16,7 +17,8 @@
     "convert": "python3 tools/smbz2nes.py convert",
     "decompile": "python3 tools/build-from-source.py --report",
     "cut": "python3 tools/make-cut-rom.py -o dist/smb-1-1-only.nes",
-    "slim": "python3 tools/make-slim-rom.py --only levels,music,gameover,enemies,enemyart"
+    "slim": "python3 tools/make-slim-rom.py --only levels,music,gameover,enemies,enemyart -o dist/smb-slim.nes",
+    "probe": "node tools/chr-probe.js dist/smb-slim.nes"
   },
   "repository": {
     "type": "git",
