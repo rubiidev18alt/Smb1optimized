@@ -5,8 +5,9 @@ build-dist.py -- produce the downloadable artifacts in dist/.
 Creates:
   dist/super-mario-bros.smbz        the packed ROM (the small download)
   dist/super-mario-bros.nes         the ROM itself, runnable in any emulator
-  dist/unpack.py                    standalone extractor (stdlib only)
-  dist/SHA256SUMS                   checksums for both
+  dist/smbz2nes.py                  the .smbz -> .nes converter (stdlib only)
+  dist/unpack.py                    minimal two-argument extractor
+  dist/SHA256SUMS                   checksums
 
 Then verifies the whole chain: .nes -> .smbz -> .nes must reproduce the original
 byte for byte, and both artifacts must match their recorded hashes.
@@ -58,16 +59,20 @@ def main():
     with open(nes_path, "wb") as f:
         f.write(original)
 
-    # 3. standalone extractor
-    extractor_src = os.path.join(DIST, "unpack.py")
-    if not os.path.exists(extractor_src):
-        print("error: dist/unpack.py is missing", file=sys.stderr)
-        return 1
+    # 3. standalone converters, copied out of tools/ so dist/ is self-contained
+    for name in ("smbz2nes.py", "unpack.py"):
+        src = os.path.join(HERE, name) if name == "smbz2nes.py" \
+            else os.path.join(DIST, name)
+        if not os.path.exists(src):
+            print("error: %s is missing" % src, file=sys.stderr)
+            return 1
+        if os.path.abspath(src) != os.path.abspath(os.path.join(DIST, name)):
+            shutil.copyfile(src, os.path.join(DIST, name))
 
     # 4. checksums
     sums_path = os.path.join(DIST, "SHA256SUMS")
     lines = []
-    for name in (OUT_PACKED, OUT_NES):
+    for name in (OUT_PACKED, OUT_NES, "smbz2nes.py", "unpack.py"):
         with open(os.path.join(DIST, name), "rb") as f:
             lines.append("%s  %s\n" % (sha256(f.read()), name))
     with open(sums_path, "w") as f:
@@ -90,7 +95,8 @@ def main():
     print("  %-28s %7d bytes  (%.1f%% of original, %.1f%% smaller)"
           % (OUT_PACKED, len(packed), 100.0 * len(packed) / len(original),
              100.0 - 100.0 * len(packed) / len(original)))
-    print("  %-28s %7s        %s" % ("unpack.py", "", "stdlib-only extractor"))
+    print("  %-28s %7s        %s" % ("smbz2nes.py", "", "stdlib-only converter"))
+    print("  %-28s %7s        %s" % ("unpack.py", "", "minimal extractor"))
     print()
     print("  crc32 original   %08X" % zlib.crc32(original))
     print("  crc32 restored   %08X" % zlib.crc32(restored))

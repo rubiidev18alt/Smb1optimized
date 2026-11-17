@@ -16,21 +16,40 @@ Everything you need is committed in [`dist/`](dist/):
 |---|---:|---|
 | [`super-mario-bros.nes`](dist/super-mario-bros.nes) | 40976 B | the ROM — runs in any NES emulator |
 | [`super-mario-bros.smbz`](dist/super-mario-bros.smbz) | 29526 B | the packed form, 27.9% smaller |
-| [`unpack.py`](dist/unpack.py) | 2.9 KB | standalone extractor, Python stdlib only |
+| [`smbz2nes.py`](dist/smbz2nes.py) | 12 KB | the `.smbz` → `.nes` converter, stdlib only |
+| [`unpack.py`](dist/unpack.py) | 2.9 KB | minimal extractor, same format |
 | [`SHA256SUMS`](dist/SHA256SUMS) | — | checksums for both |
 
 Just want to play? Download `super-mario-bros.nes` and open it in any emulator
 (Mesen, FCEUX, RetroArch, Nestopia). It is byte-identical to the original ROM.
 
-Want the small file? Download `super-mario-bros.smbz` **and** `unpack.py`
+Want the small file? Download `super-mario-bros.smbz` **and** `smbz2nes.py`
 together, then:
 
 ```bash
-python3 unpack.py super-mario-bros.smbz -o super-mario-bros.nes
+python3 smbz2nes.py convert super-mario-bros.smbz
+# -> super-mario-bros.nes, 40976 bytes, crc32 3337EC46
 ```
 
-That verifies a CRC32 per stream and over the whole file, and reproduces the
-40976-byte ROM exactly. No dependencies beyond Python 3.
+That verifies a CRC32 per stream and over the whole file, and reproduces the ROM
+exactly. No dependencies beyond Python 3.
+
+## `smbz2nes.py` — the converter
+
+```
+smbz2nes.py convert FILE.smbz [-o OUT.nes | -o DIR/] [-f] [-q] [--stdout]
+smbz2nes.py verify  FILE.smbz...      # integrity only, writes nothing
+smbz2nes.py info    FILE.smbz         # what is inside the container
+```
+
+| behaviour | detail |
+|---|---|
+| default output | same basename as the input, `.nes` |
+| batch | `convert *.smbz -o roms/` — the directory is created if needed |
+| overwrite | refused unless `--force`; an existing file is never clobbered |
+| piping | `--stdout` writes the ROM to stdout |
+| corruption | truncated / corrupt / wrong-magic files fail with a specific message and **no output file is written** |
+| exit codes | `0` ok, `1` conversion or integrity failure, `2` usage error |
 
 Checksums (also in `dist/SHA256SUMS`):
 
@@ -57,6 +76,8 @@ Verified two ways:
 ```bash
 npm test            # headless: boots to title, presses START, checks World 1-1
 npm run test:page   # loads the real page in jsdom, asserts frames are painted
+python3 tests/test_rompack.py     # 6 tests: container round-trip
+python3 tests/test_smbz2nes.py    # 21 tests: converter, incl. corruption paths
 ```
 
 The page recomputes the ROM's CRC32 in the browser (`3337EC46`) as proof it read
