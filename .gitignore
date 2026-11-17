@@ -10,3 +10,6 @@ package-lock.json
 # python
 __pycache__/
 *.pyc
+
+# source-build intermediates
+/build/

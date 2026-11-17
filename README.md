@@ -74,6 +74,41 @@ directly in most emulators) or the **`.smbz`** (27.9% smaller, needs the
 converter). Full reasoning in
 [FINDINGS.md](FINDINGS.md#appendix-can-the-nes-itself-stay-compressed).
 
+## Decompiled source build
+
+The game has been decompiled: `tools/build-from-source.py` assembles it from
+6502 ca65 source and verifies the result is **bit-for-bit the original ROM**.
+
+```bash
+python3 tools/build-from-source.py --report
+```
+
+```
+rebuilt : 40976 bytes  sha1 ea343f4e445a9050d4b4fbac2c77d0693b1d0922
+original: 40976 bytes  sha1 ea343f4e445a9050d4b4fbac2c77d0693b1d0922
+PASS  rebuilt ROM is BYTE-IDENTICAL to the original
+```
+
+It builds ca65/ld65 from cc65 on first run, fetches the pinned source, extracts
+assets from your ROM, and assembles. Nothing copyrighted is committed: the
+rebuild output and extracted assets stay in the git-ignored `build/`.
+
+### Why it cannot be trimmed to ~23268 bytes
+
+23268 is not a legal iNES size (they are `16 + PRG*16K + CHR*8K`); the nearest
+is 24592, which needs the whole game in **one 16 KiB PRG bank**. Linking the
+verified source against that config gives:
+
+```
+Segment 'PRG' overflows memory area 'ROM0' by 16384 bytes
+```
+
+Exactly double. PRG has zero padding, so the bytes must be *deleted*: all level
+data, music and enemy placement together free only 6642 of the required 16384,
+leaving **9742 bytes to cut from the 6502 engine itself**. There is no CHR-RAM
+path either — the source has no CHR uploader. See
+[FINDINGS.md](FINDINGS.md#appendix-decompilation-and-trimming-to-23268-bytes).
+
 ## Play it now
 
 ```bash

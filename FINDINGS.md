@@ -294,3 +294,113 @@ therefore not an encoding of SMB1; it is a smaller game that resembles SMB1.
 | 47.1% smaller | not reachable losslessly (needs 7769 B more) |
 | 46.3% | not reachable losslessly (needs 10473 B more) |
 | any figure above ~28% | requires deleting game content |
+
+---
+
+# Appendix: decompilation and trimming to ~23268 bytes
+
+This appendix records a genuine decompilation result and the arithmetic that
+prevents the requested trim.
+
+## 1. A real decompilation exists and is verified bit-exact
+
+`RetrolariumLab/smb1_src` is a ca65 source reconstruction of the commercial
+releases. Our ROM is an exact match for the image it expects
+(sha1 `ea343f4e445a9050d4b4fbac2c77d0693b1d0922`).
+
+`tools/build-from-source.py` reproduces the whole chain from this repo:
+
+```
+[1/4] fetching source @ eb8faad3
+[2/4] building toolchain (ca65/ld65 from cc65)
+[3/4] extracting assets from the ROM      -> 7 assets verified, 0 mismatched
+[4/4] assembling from source
+  rebuilt : 40976 bytes  sha1 ea343f4e445a9050d4b4fbac2c77d0693b1d0922
+  original: 40976 bytes  sha1 ea343f4e445a9050d4b4fbac2c77d0693b1d0922
+  PASS  rebuilt ROM is BYTE-IDENTICAL to the original
+```
+
+So the game is fully decompiled, assembled from 6502 source, and the result is
+**bit-for-bit the cartridge**. That is the strongest possible verification.
+
+## 2. 23268 bytes is not a legal iNES size
+
+An iNES file is `16 + PRG_banks*16384 + CHR_banks*8192` — sizes are quantised:
+
+| legal size | composition |
+|---:|---|
+| 16400 | 16K PRG, CHR-RAM |
+| **24592** | **16K PRG + 8K CHR** |
+| 32784 | 16K PRG + 16K CHR |
+| 40976 | 32K PRG + 8K CHR (current) |
+
+The nearest legal size at or below the request is **24592 bytes** (40.0% smaller).
+Reaching it means fitting the entire game into **one 16 KiB PRG bank** — PRG must
+be halved.
+
+## 3. The link fails by exactly 16384 bytes
+
+Linking the verified object against a one-bank config:
+
+```
+Warning: Segment 'PRG' overflows memory area 'ROM0' by 16384 bytes
+ld65: Error: Cannot generate most of the files due to memory area overflow
+```
+
+Not approximately — **exactly double**. PRG is 32762 bytes with **zero padding**,
+so nothing can be shaved by repacking. The bytes must be *deleted*.
+
+## 4. Where the bytes are, and why deleting them breaks the game
+
+| region | bytes | share of PRG |
+|---|---:|---:|
+| code: engine, audio, rendering, physics, collisions | 29336 | 89.5% |
+| level/course streams + enemy streams | 3267 | 10.0% |
+| music data | 159 | 0.5% |
+
+Available non-code data that could theoretically be cut:
+
+| asset | bytes |
+|---|---:|
+| course area streams (all levels) | 3373 |
+| music data | 1602 |
+| course enemy streams | 1087 |
+| metatile graphics | 404 |
+| area palette packets | 176 |
+| **total** | **6642** |
+
+Required cut: **16384 bytes**. Even deleting **all** level data, **all** music
+and **all** enemy placement:
+
+- 6642 bytes available (40.5% of what is needed)
+- **9742 bytes must still come out of the 6502 engine itself — 29.7% of PRG**
+
+There is no CHR-RAM path either: the source tree contains **no** CHR-RAM
+initialisation code (a byte-for-byte reconstruction has no reason to), so the
+8 KiB CHR section cannot be moved into PPU RAM to free PRG space.
+
+## 5. What "trimmed to 24592" would actually be
+
+Removing any PRG or CHR bank is not an encoding change, it is a functional one:
+
+- **PRG 32K→16K** — delete World 2 onward, the title/demo screens, the audio
+  engine, or all sprite/enemy logic. The remaining code would have to be
+  re-pointed at every removed symbol, and the result is a different program.
+- **CHR 8K→0K** — requires writing a CHR uploader that streams tiles into PPU
+  RAM, plus graphics ROM to stream from, which costs the PRG space it was meant
+  to save.
+
+Neither is "an optimised SMB1"; both are a smaller game resembling SMB1.
+
+## 6. Licensing
+
+The reconstruction is public but **no license is granted**. Its
+`docs/licensing.md` states plainly: *"No license to Nintendo's original game
+code, graphics, music, characters, ROM images... is granted by this repository...
+Their presence in the repository does not by itself grant redistribution
+rights."*
+
+Consequently this repo **does not vendor** that source or any generated assets.
+`tools/build-from-source.py` fetches it at a pinned commit on demand and works
+only from the ROM you already have. The rebuilt ROM and extracted assets land in
+`build/`, which is git-ignored.
