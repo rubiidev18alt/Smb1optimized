@@ -1,0 +1,34 @@
+{
+  "name": "smb1optimized",
+  "version": "1.0.0",
+  "description": "SMB1 size analysis + browser test harness",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tools/smoke-test.js 300",
+    "test:page": "node tools/page-test.js",
+    "pack": "python3 tools/rompack.py pack \"Super Mario Bros. (JU) (PRG0) [!].nes\" -o smb1.smbz",
+    "analyze": "python3 tools/rompack.py analyze \"Super Mario Bros. (JU) (PRG0) [!].nes\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rubiidev18alt/Smb1optimized.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/rubiidev18alt/Smb1optimized/issues"
+  },
+  "homepage": "https://github.com/rubiidev18alt/Smb1optimized#readme",
+  "dependencies": {
+    "jsnes": "^3.0.0"
+  },
+  "private": true,
+  "devDependencies": {
+    "jsdom": "^27.0.0"
+  }
+}

@@ -1,4 +1,12 @@
+# generated
 smb1.smbz
+build/
 *.smbz
+
+# deps
+node_modules/
+package-lock.json
+
+# python
 __pycache__/
 *.pyc

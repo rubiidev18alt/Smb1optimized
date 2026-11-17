@@ -175,6 +175,14 @@ def _filters(lc: int, lp: int, pb: int) -> list:
              "dict_size": DICT_SIZE, "lc": lc, "lp": lp, "pb": pb}]
 
 
+def _write(path: str, data: bytes) -> None:
+    """Write binary output, creating the parent directory if needed."""
+    parent = os.path.dirname(os.path.abspath(path))
+    os.makedirs(parent, exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+
+
 def compress_stream(seg: bytes) -> tuple[bytes, int, int, int]:
     """Pick the smallest (lc,lp,pb) for this stream; return raw bytes + params."""
     best = None
@@ -364,8 +372,7 @@ def cmd_pack(args) -> int:
     rom = load(args.rom)
     blob = pack(rom)
     out = args.output or os.path.splitext(args.rom)[0] + ".smbz"
-    with open(out, "wb") as f:
-        f.write(blob)
+    _write(out, blob)
     n = len(rom.raw)
     print(f"packed  {args.rom} -> {out}")
     print(f"  {n} bytes -> {len(blob)} bytes  "
@@ -385,8 +392,7 @@ def cmd_unpack(args) -> int:
         blob = f.read()
     data = unpack(blob)
     out = args.output or os.path.splitext(args.packed)[0] + ".nes"
-    with open(out, "wb") as f:
-        f.write(data)
+    _write(out, data)
     print(f"unpacked {args.packed} -> {out} ({len(data)} bytes)")
     print(f"  crc32 {zlib.crc32(data):08X}  sha256 {hashlib.sha256(data).hexdigest()}")
     return 0

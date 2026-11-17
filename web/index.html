@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Super Mario Bros. — build test</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main class="shell">
+  <header class="bar">
+    <h1>Super Mario Bros. <span class="tag">build test</span></h1>
+    <div class="meta" id="meta">loading…</div>
+  </header>
+
+  <div class="stage">
+    <canvas id="screen" width="256" height="240" aria-label="NES screen"></canvas>
+    <div class="overlay" id="overlay">
+      <div class="overlay-inner">
+        <h2 id="overlay-title">Press Start</h2>
+        <p id="overlay-text">Click or press any key to begin.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="btn-boot" class="primary">▶ Boot</button>
+    <button id="btn-reset">⟲ Reset</button>
+    <button id="btn-sound" aria-pressed="true">🔊 Sound</button>
+    <button id="btn-fullscreen">⛶ Fullscreen</button>
+  </div>
+
+  <p class="hint">
+    <kbd>←</kbd><kbd>→</kbd> move · <kbd>↓</kbd> crouch · <kbd>Z</kbd> jump ·
+    <kbd>X</kbd> run + fire · <kbd>Enter</kbd> start · <kbd>Shift</kbd> select
+  </p>
+
+  <section class="pad" aria-label="touch controls">
+    <div class="dpad">
+      <button data-btn="up"    aria-label="up">▲</button>
+      <button data-btn="left"  aria-label="left">◀</button>
+      <button data-btn="right" aria-label="right">▶</button>
+      <button data-btn="down"  aria-label="down">▼</button>
+    </div>
+    <div class="ab">
+      <button data-btn="b" class="round">B</button>
+      <button data-btn="a" class="round">A</button>
+    </div>
+    <div class="sel">
+      <button data-btn="select">SELECT</button>
+      <button data-btn="start">START</button>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span id="rom-info">ROM: —</span>
+    <span id="fps">fps: —</span>
+  </footer>
+</main>
+
+<script src="/vendor/jsnes.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
