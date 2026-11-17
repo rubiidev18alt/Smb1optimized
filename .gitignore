@@ -16,3 +16,5 @@ __pycache__/
 
 # cut-ROM artifacts
 !dist/smb-1-1-only.smbz
+!dist/smb-slim.smbz
+!dist/smb-slim.nes

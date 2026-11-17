@@ -94,9 +94,9 @@ def main():
     sums_path = os.path.join(DIST, "SHA256SUMS")
     lines = []
     extra = []
-    cut_smbz = os.path.join(DIST, "smb-1-1-only.smbz")
-    if os.path.exists(cut_smbz):
-        extra.append("smb-1-1-only.smbz")
+    for name in ("smb-1-1-only.smbz", "smb-slim.smbz", "smb-slim.nes"):
+        if os.path.exists(os.path.join(DIST, name)):
+            extra.append(name)
     for name in (OUT_PACKED, OUT_NES, OUT_ZIP, "smbz2nes.py", "unpack.py") + tuple(extra):
         with open(os.path.join(DIST, name), "rb") as f:
             lines.append("%s  %s\n" % (sha256(f.read()), name))

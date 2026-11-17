@@ -133,6 +133,43 @@ banks and 28499 is still 12115 bytes over one bank. Reaching 24592 needs a
 further ~12 KB of engine surgery — see
 [FINDINGS.md](FINDINGS.md#appendix-the-world-1-1-cut).
 
+## Slim cut (levels + audio removed, restart fix)
+
+`dist/smb-slim.nes` removes 1-2 through 8-4 **and** all music/sound effects, and
+fixes the black screen after finishing a level.
+
+```bash
+python3 tools/make-slim-rom.py --only levels,music,restart
+```
+
+Each cut is measured independently:
+
+| cut | PRG saved |
+|---|---:|
+| `levels` — 1-2…8-4 removed | 4263 B |
+| `music` — engine stubbed + streams dropped | 1610 B |
+| `restart` — completion restarts the run | −11 B |
+| **total** | **5862 B (17.9%)** |
+
+**Level-completion black screen: fixed.** `handler_finish_world` advanced to the
+next world, which has no data. It now restarts 1-1. Verified by driving the
+victory path: without the fix `world=1` and a black screen; with it `world=0` and
+the screen 85% alive.
+
+**Title-screen removal: tried, rejected.** Skipping the title also skips VRAM
+initialisation, so 1-1 draws garbage metatiles (bricks fell from 3535 px to 24).
+It also overflows PRG by 2 bytes. Not enabled.
+
+**CHR: nothing removable.** The PPU addresses tiles by index and the format
+emits 8 KiB per bank; 512 tiles with 2 blank and 5 duplicates is 80 bytes, and
+removing any renumbers what 1-1 draws.
+
+| artifact | .nes | packed | smaller |
+|---|---:|---:|---:|
+| original | 40976 | 29526 | 27.9% |
+| 1-1 only | 40976 | 25526 | 37.7% |
+| **slim** | **40976** | **24351** | **40.6%** |
+
 ## Play it now
 
 ```bash

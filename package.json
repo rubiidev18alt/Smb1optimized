@@ -15,7 +15,8 @@
     "dist": "python3 tools/build-dist.py",
     "convert": "python3 tools/smbz2nes.py convert",
     "decompile": "python3 tools/build-from-source.py --report",
-    "cut": "python3 tools/make-cut-rom.py -o dist/smb-1-1-only.nes"
+    "cut": "python3 tools/make-cut-rom.py -o dist/smb-1-1-only.nes",
+    "slim": "python3 tools/make-slim-rom.py --only levels,music,restart"
   },
   "repository": {
     "type": "git",

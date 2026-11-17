@@ -465,3 +465,85 @@ done incrementally with the 1-1 verification test after every step.
 - Its packed form is **37.7% smaller**, the best result so far.
 - It is **not** 24592 bytes; that requires the additional engine cuts above.
 - It is **not** the original game: 1-2 through 8-4 are gone by design.
+
+---
+
+# Appendix: the slim pass (levels, audio, restart)
+
+Built with `tools/make-slim-rom.py`, which applies each cut separately and
+prints the PRG footprint after every one, so the price of each feature is
+visible. Cuts are applied to a **staged copy**; the decompiled tree is never
+mutated.
+
+## Measured cost of each cut
+
+| cut | PRG after | saved | cumulative |
+|---|---:|---:|---:|
+| (baseline) | 32762 | — | — |
+| `levels` — remove 1-2…8-4 | 28499 | **4263** | 17.9% off baseline at the end |
+| `music` — stub engine + drop music streams | 26889 | **1610** | |
+| `restart` — level completion restarts | 26900 | −11 | |
+| **final** | **26900** | **5862 (17.9%)** | |
+
+`music` needed two parts: stubbing `sub_sound_engine` alone saved only **8
+bytes**, because the stream data is still emitted. Dropping the 33
+`.incbin con_music_data_asset` lines in `music_streams.asm` is what recovered
+the other 1602.
+
+## The level-completion black screen: found and fixed
+
+`handler_finish_world` in `game/modes.asm` increments `ram_world_number` to load
+the next world. With 1-2 onward removed, that loaded an empty area and hung on a
+black screen.
+
+The fix forces a restart of the run instead:
+
+```
+LDA #$00 / STA ram_world_number / STA ram_area_number / STA ram_level_number
+STA ram_oper_mode_task / JSR sub_load_area_pointer
+INC ram_fetch_new_game_timer_flag / LDA #con_mode_game / STA ram_oper_mode
+```
+
+Verified by driving the victory path directly:
+
+| build | after completing a level |
+|---|---|
+| without fix | `mode=1 world=1 area=0` — advances to World 2, no data, **black screen** |
+| **with fix** | `mode=1 world=0 area=0` — restarts 1-1, screen **85.3% alive** |
+
+Reproduced with `jsnes` by setting the RAM mode to victory with the world-end
+timer expired, then reading back `ram_world_number` and the framebuffer.
+
+## The title-screen cut is unsafe — measured, not assumed
+
+Setting `ram_oper_mode = 1` at boot skips the title screen, but the title
+handler is also what performs VRAM/nametable initialisation. The result is a
+screen of garbage tiles:
+
+**observed:** 8 colours, sky 16094 px, bricks **24 px** (vs 3535 in a good
+build) — the level drew metatile garbage.
+
+The cut also **overflows PRG by 2 bytes** on its own, because it adds
+instructions without removing any handler. It is therefore *not* enabled. Making
+it safe means also deleting the title/demo handler and reimplementing the VRAM
+init it performs — real work, tracked in the summary below.
+
+## CHR: nothing is safely removable
+
+The PPU addresses tiles by index and the encoder emits 8 KiB per bank, so CHR
+cannot shrink: 512 tiles, 2 blank, 5 duplicate copies — 80 bytes total, and each
+blank/duplicate is referenced by a fixed index. Removing one renumbers every
+tile after it and changes what 1-1 draws.
+
+## Final state
+
+| artifact | .nes | packed | vs original |
+|---|---:|---:|---:|
+| original | 40976 | 29526 | 27.9% smaller |
+| 1-1 cut | 40976 | 25526 | 37.7% smaller |
+| **slim** | **40976** | **24351** | **40.6% smaller** |
+
+PRG is 26900 bytes — still **10516 bytes over** a single 16 KiB bank, so the
+`.nes` remains 40976 bytes. Getting to 24592 needs those 10516 bytes out of the
+engine: unused enemy AI, unused object/collision handlers, and the title/demo
+code together with its VRAM initialisation.

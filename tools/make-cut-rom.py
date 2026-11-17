@@ -107,7 +107,7 @@ def assemble(src, out_path):
 
 
 def prg_size(mapfile):
-    for line in open(mapfile):
+    for line in open(mapfile, errors='replace'):
         m = re.match(r"PRG\s+[0-9A-F]+\s+[0-9A-F]+\s+([0-9A-F]+)", line)
         if m:
             return int(m.group(1), 16)
