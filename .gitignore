@@ -1,7 +1,7 @@
-# generated
-smb1.smbz
-build/
+# build intermediates -- dist/ IS committed (it holds the downloadable ROM)
 *.smbz
+!dist/*.smbz
+build/
 
 # deps
 node_modules/

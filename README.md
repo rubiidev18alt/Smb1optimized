@@ -8,6 +8,39 @@ Analysis and lossless size optimisation of `Super Mario Bros. (JU) (PRG0) [!].ne
 A 99% reduction is not achievable for this file — see [FINDINGS.md](FINDINGS.md)
 for the measurements, the entropy floor, and the arithmetic showing why.
 
+## Download
+
+Everything you need is committed in [`dist/`](dist/):
+
+| file | size | what it is |
+|---|---:|---|
+| [`super-mario-bros.nes`](dist/super-mario-bros.nes) | 40976 B | the ROM — runs in any NES emulator |
+| [`super-mario-bros.smbz`](dist/super-mario-bros.smbz) | 29526 B | the packed form, 27.9% smaller |
+| [`unpack.py`](dist/unpack.py) | 2.9 KB | standalone extractor, Python stdlib only |
+| [`SHA256SUMS`](dist/SHA256SUMS) | — | checksums for both |
+
+Just want to play? Download `super-mario-bros.nes` and open it in any emulator
+(Mesen, FCEUX, RetroArch, Nestopia). It is byte-identical to the original ROM.
+
+Want the small file? Download `super-mario-bros.smbz` **and** `unpack.py`
+together, then:
+
+```bash
+python3 unpack.py super-mario-bros.smbz -o super-mario-bros.nes
+```
+
+That verifies a CRC32 per stream and over the whole file, and reproduces the
+40976-byte ROM exactly. No dependencies beyond Python 3.
+
+Checksums (also in `dist/SHA256SUMS`):
+
+```
+d2516ddc7da5bd9811407ca65bdf37e2ecee47679f2f2ad432ad88e1ebaea008  super-mario-bros.smbz
+f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de  super-mario-bros.nes
+```
+
+Rebuild the artifacts from the source ROM at any time with `npm run dist`.
+
 ## Play it now
 
 ```bash
@@ -83,3 +116,5 @@ a property of the data, not of the effort applied.
 | `tools/rompack.py` | analyzer / packer / unpacker |
 | `tests/test_rompack.py` | round-trip and corruption-detection tests |
 | `FINDINGS.md` | the measurements and the ceiling argument |
+| `dist/` | the downloadable ROM, packed form, extractor and checksums |
+| `tools/build-dist.py` | rebuilds `dist/` and verifies the whole chain |

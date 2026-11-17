@@ -11,7 +11,8 @@
     "test": "node tools/smoke-test.js 300",
     "test:page": "node tools/page-test.js",
     "pack": "python3 tools/rompack.py pack \"Super Mario Bros. (JU) (PRG0) [!].nes\" -o smb1.smbz",
-    "analyze": "python3 tools/rompack.py analyze \"Super Mario Bros. (JU) (PRG0) [!].nes\""
+    "analyze": "python3 tools/rompack.py analyze \"Super Mario Bros. (JU) (PRG0) [!].nes\"",
+    "dist": "python3 tools/build-dist.py"
   },
   "repository": {
     "type": "git",
