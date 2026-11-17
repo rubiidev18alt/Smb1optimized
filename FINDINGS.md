@@ -670,12 +670,12 @@ less from 23947. CHR blanking got most of the way there:
 | build | .nes | packed | smaller |
 |---|---:|---:|---:|
 | slim, no CHR pass | 40976 | 23947 | 41.6% |
-| **slim + CHR blanking** | **40976** | **21500** | **47.5%** |
+| **slim + CHR blanking** | **40976** | **21941** | **46.5%** |
 
-That is 5348 packed bytes for a transformation that changes no pixel: 0
-differing pixels across a 3000-frame run, and identical hashes for the title
-screen, world 1-1 and the GAME OVER screen against the same build without the
-pass.
+An earlier version of this pass reported 47.5% (21500 bytes) and it was wrong:
+it had blanked the fire flower, the hammer bro, the flagpole and a dozen scenery
+tiles. The lesson is recorded further down, because it is the whole difficulty of
+this optimisation.
 
 ## Why blanking, not shrinking
 
@@ -718,7 +718,7 @@ ROM drew is blank in the build under test.
 
 ## Why 53.2% is still out of reach
 
-21500 packed needs another **2323 bytes** to reach 19177, and this time the
+21941 packed needs another **2764 bytes** to reach 19177, and this time the
 obvious lever is a cliff rather than a slope.
 
 PRG is 26334 bytes and is stored as two 16 KiB banks. Bank 1 alone compresses to
@@ -751,3 +751,69 @@ the measurements say it does not.
 The honest statement is therefore: **47.5% is what this content delivers.** 53.2%
 requires cutting player art, scenery or a further mode, or moving to a single-bank
 layout that no longer contains a complete 1-1.
+
+
+---
+
+# Correction: blanking needs data, not observation
+
+The first version of the CHR pass reached 21500 packed (47.5%) and I described it
+as verified because 3000 frames of gameplay matched pixel for pixel. It shipped
+broken: the fire flower, hard blocks, the flagpole and about a dozen scenery
+tiles were blank.
+
+## Why the verification was worthless
+
+The check was "the screens the test produced are identical". The test walked right
+from the start of 1-1, so it covered roughly the first two pages of the level and
+never produced:
+
+| what | why the run never showed it |
+|---|---|
+| fire flower | only spawns if the player is already big when a block is hit |
+| fire Mario | needs a mushroom first; 1-1 has no flower to pick up |
+| flagpole | needs the end of the level, past the first pit |
+| hardest blocks / late scenery | further right than the bot survives |
+| GAME OVER "V" | drawn with a tile the title screen does not use |
+
+Anything not produced was declared unused and erased. The harvest was a *lower
+bound* on what the game draws, and the blanker treated it as exact.
+
+## What replaced it
+
+Two sources, because each is incomplete on its own:
+
+1. **The game's data tables.** The renderer only draws a tile index it read from
+   `tbl_player_graphics_tiles`, `tbl_enemy_graphics_tiles` or the scenery table.
+   `tools/extract-tile-tables.py` resolves those tables through the linker's label
+   addresses and collects every index in them. Enemy art is scoped to the enemies
+   `tools/decode-area-enemies.py` decodes out of world 1-1's own enemy stream, so
+   whole enemies of deleted worlds are not protected either.
+2. **A full-level sweep.** `tools/sweep-probe.js` teleports the camera and player
+   through all 16 pages of 1-1, as fire Mario, throwing fireballs, then into the
+   GAME OVER screen. Teleporting needs the player's Y set as well as X — moving
+   the camera alone drops him into empty sky, he dies, and the "swept" page is
+   never actually seen. That bug cost a round of this investigation.
+
+Both sets are unioned, then any tile that is empty in the reference ROM is
+dropped. Gates before the ROM is emitted:
+
+- no tile referenced by the data tables may be blank;
+- every page of 1-1, the final flagpole screen and the GAME OVER screen must hash
+  identically to the unblanked reference.
+
+## Numbers
+
+| | tiles blanked | packed | smaller |
+|---|---:|---:|---:|
+| walking-bot harvest (broken) | 267 | 21500 | 47.5% |
+| tables + sweep (correct) | 231 | 21941 | 46.5% |
+
+The correct build is 441 bytes larger. That is the cost of the 36 tiles that were
+being erased: the fire flower, the hammer bro, the flagpole, the late scenery, and
+the spiny whose table was being truncated at 96 of its 276 entries.
+
+`tools/decode-area-enemies.py` confirms 1-1 spawns goombas, green koopas, hammer
+bros, bullet bills, a firebar and lifts — and no spiny. That is why the spiny's
+art can still be blanked, and it is now justified by the level data rather than by
+a bot failing to meet one.

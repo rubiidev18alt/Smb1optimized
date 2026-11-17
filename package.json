@@ -18,7 +18,10 @@
     "decompile": "python3 tools/build-from-source.py --report",
     "cut": "python3 tools/make-cut-rom.py -o dist/smb-1-1-only.nes",
     "slim": "python3 tools/make-slim-rom.py --only levels,music,gameover,enemies,enemyart -o dist/smb-slim.nes",
-    "probe": "node tools/chr-probe.js dist/smb-slim.nes"
+    "probe": "node tools/chr-probe.js dist/smb-slim.nes",
+    "sweep": "node tools/sweep-probe.js dist/smb-slim.nes --dead",
+    "tiles": "python3 tools/extract-tile-tables.py build/rom/chr_reference.nes build/rom/slim.lbl",
+    "enemies": "python3 tools/decode-area-enemies.py build/src/smb1_src/assets/generated/source/base_course_enemy_streams.bin"
   },
   "repository": {
     "type": "git",

@@ -349,13 +349,19 @@ CUT_FUNCS = {"levels": cut_levels, "music": cut_music, "enemies": cut_enemies,
 # build + measure
 # --------------------------------------------------------------------------- #
 
+def labels_path_for(mapfile):
+    return os.path.splitext(mapfile)[0] + ".lbl"
+
+
 def assemble(stage_root, out_path, mapfile):
     """Assemble inside a staged tree (which holds src/, config/ and assets/)."""
     env = dict(os.environ)
     env["PATH"] = TOOLBIN + os.pathsep + env.get("PATH", "")
     obj = os.path.join(BUILD, "rom", "slim.o")
     os.makedirs(os.path.dirname(obj), exist_ok=True)
-    r = subprocess.run([os.path.join(TOOLBIN, "ca65"),
+    # -g keeps labels in the object file; ld65 -Ln then writes their addresses,
+    # which is how the CHR pass finds the game's tile tables.
+    r = subprocess.run([os.path.join(TOOLBIN, "ca65"), "-g",
                     "-I", "src", "-I", "src/revisions/",
                     "--bin-include-dir", "assets/generated",
                     "-o", obj, "src/revisions/ju.asm"],
@@ -364,6 +370,7 @@ def assemble(stage_root, out_path, mapfile):
         raise SystemExit("ca65 failed:\n" + (r.stdout or "") + (r.stderr or ""))
     l = subprocess.run([os.path.join(TOOLBIN, "ld65"),
                     "-C", "config/linker/nrom256.cfg",
+                    "-Ln", labels_path_for(mapfile),
                     "-m", mapfile, "-o", out_path, obj],
                    cwd=stage_root, env=env, capture_output=True, text=True)
     if l.returncode != 0:
@@ -379,16 +386,75 @@ def prg_used(mapfile):
     raise SystemExit("error: could not read PRG size from the map")
 
 
-def harvest_chr_usage(rom):
-    """Run the ROM and report which CHR tile indices it displays."""
-    out = os.path.join(BUILD, "rom", "chr_usage.json")
-    p = subprocess.run(["node", os.path.join(ROOT, "tools", "find-unused-chr.js"),
-                        rom, "6000"],
-                       cwd=ROOT, capture_output=True, text=True)
-    if p.returncode != 0:
-        raise SystemExit("error: CHR usage harvest failed:\n" + (p.stdout or "") + (p.stderr or ""))
-    open(out, "w").write(p.stdout)
-    return json.loads(p.stdout)
+def _sweep_used(rom):
+    """Tiles displayed anywhere in the sweep: every page of 1-1 + GAME OVER."""
+    results = {"bg": set(), "sp": set()}
+    for extra in (["--pages", "16"], []):
+        cmd = ["node", os.path.join(ROOT, "tools", "sweep-probe.js"), rom] + extra
+        p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+        if p.returncode != 0:
+            raise SystemExit("error: CHR usage sweep failed:\n"
+                             + (p.stdout or "") + (p.stderr or ""))
+        data = json.loads(p.stdout)
+        for table in ("bg", "sp"):
+            results[table].update(data.get("used", {}).get(table, []))
+    return results
+
+
+def _table_used(rom, labels_path):
+    """Tiles the renderer can be told to draw, taken from the game's own tables.
+
+    Emulation proves a tile is used but never that it is unused, and the gaps are
+    the interesting objects: the fire flower needs the player to be big, fire
+    Mario needs a mushroom first, the flagpole needs the end of the level. Those
+    were blanked because no test run produced them. The renderer only ever draws
+    an index it read from a table, so the tables plus the sweep are the used set.
+    """
+    out = os.path.join(BUILD, "rom", "table_tiles.json")
+    proc = subprocess.run(
+        [sys.executable, os.path.join(ROOT, "tools", "extract-tile-tables.py"),
+         rom, labels_path, "--json", out],
+        cwd=ROOT, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise SystemExit("error: tile table extraction failed:\n"
+                         + (proc.stdout or "") + (proc.stderr or ""))
+    data = json.load(open(out))
+    return {"bg": set(data["bg"]), "sp": set(data["sp"])}
+
+
+# Tiles the renderer reaches without going through a table or a nametable: the
+# drawn text of the GAME OVER screen, and the title logo that the game decodes
+# from raw pattern bytes. Both are read back through $2007, so they must stay.
+CHR_TEXT_TILES_BG = frozenset([31])
+
+
+def harvest_chr_usage(rom, labels_path):
+    """Every CHR tile the game can display, from data and from observation.
+
+    The two sources are complementary and neither is sufficient alone: the sweep
+    sees nametable and sprite traffic for the whole level, and the tables cover
+    objects a run never happened to produce. Tiles that are empty in the original
+    ROM are dropped, since blanking them changes nothing.
+    """
+    sweep = _sweep_used(rom)
+    tables = _table_used(rom, labels_path)
+
+    ref = open(rom, "rb").read()
+    used = {}
+    for table, base in (("bg", CHR_BG_BASE), ("sp", CHR_SP_BASE)):
+        tiles = sweep[table] | tables[table]
+        if table == "bg":
+            tiles |= CHR_TEXT_TILES_BG
+        keep = set()
+        for t in tiles:
+            off = base + t * 16
+            if ref[off:off + 16] != b"\x00" * 16:
+                keep.add(t)
+        used[table] = sorted(keep)
+
+    with open(os.path.join(BUILD, "rom", "chr_usage.json"), "w") as f:
+        json.dump(used, f)
+    return used
 
 
 # CHR is laid out as two 256-tile pattern tables. SMB renders the background
@@ -458,17 +524,47 @@ def find_drawn_but_blank(rom):
     """Return the tiles the ROM draws even though their CHR bytes are blank.
 
     Sampling nametables and OAM to guess what is unused misses tiles that only
-    appear briefly or at one scroll position. Running the blanked ROM and
-    looking for the failure directly finds them: a tile index that is on screen
-    while its 16 bytes are zero is a tile that has to be put back. The scan
-    shares its input timeline with the acceptance probe, so it sees exactly the
-    screens the probe fingerprints.
+    appear later in the level, in another power-up state, or at one particular
+    scroll position. Running the blanked ROM and looking for the failure
+    directly finds them: a tile index that is on screen while its 16 bytes are
+    zero is a tile that has to be put back.
+
+    The sweep teleports through every page of world 1-1 as fire Mario and
+    compares all of it against the reference ROM, so "on screen" means the whole
+    level rather than whatever a walking bot happened to reach. The walking
+    timeline is swept as well, for the title screen and the GAME OVER screen.
     """
-    p = subprocess.run(["node", os.path.join(ROOT, "tools", "chr-probe.js"), rom, "--dead"],
-                       cwd=ROOT, capture_output=True, text=True)
-    if p.returncode != 0:
-        raise SystemExit("error: dead-tile scan failed:\n" + (p.stdout or "") + (p.stderr or ""))
-    return json.loads(p.stdout).get("dead", {})
+    results = {}
+    for extra in (["--pages", "16"], []):
+        cmd = ["node", os.path.join(ROOT, "tools", "sweep-probe.js"), rom, "--dead"] + extra
+        p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+        if p.returncode != 0:
+            raise SystemExit("error: dead-tile scan failed:\n" + (p.stdout or "") + (p.stderr or ""))
+        data = json.loads(p.stdout)
+        for table in ("bg", "sp"):
+            results.setdefault(table, set()).update(data.get("dead", {}).get(table, []))
+    return {k: sorted(v) for k, v in results.items()}
+
+
+def _sweep_hashes(rom):
+    """Fingerprint every page of world 1-1, plus the walking screens."""
+    hashes = {}
+    for extra, tag in ((["--pages", "16"], "sweep"), ([], "walk")):
+        cmd = ["node", os.path.join(ROOT, "tools", "sweep-probe.js"), rom] + extra
+        p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+        if p.returncode != 0:
+            raise SystemExit("error: page sweep failed:\n" + (p.stdout or "") + (p.stderr or ""))
+        data = json.loads(p.stdout)
+        for page, h in data.get("pages", {}).items():
+            hashes["%s:page:%s" % (tag, page)] = h
+        hashes["%s:final" % tag] = data.get("final_page")
+        hashes["%s:gameover" % tag] = data.get("gameover")
+    # The walking timeline also covers the title and GAME OVER screens.
+    walk = probe_chr(rom)
+    for key in ("title", "title_settled", "level_start", "level_walk", "gameover"):
+        if key in walk:
+            hashes["probe:" + key] = walk[key]
+    return hashes
 
 
 def blank_unused_chr_verified(reference_rom, working_rom, usage):
@@ -476,10 +572,10 @@ def blank_unused_chr_verified(reference_rom, working_rom, usage):
 
     The pattern table is read back by the game in one place -- the title screen
     is rebuilt from the raw bytes of tiles 236-255 -- so those are protected up
-    front. Everything else is blanked optimistically and any tile that turns up
-    on screen while blank is restored. The loop runs until a full pass finds
-    nothing drawn-and-blank, then the rendered screens are compared against the
-    unblanked reference as a final gate.
+    front. Everything else is blanked optimistically, and any tile that turns up
+    on screen while blank is restored. The check runs over every page of world
+    1-1, as fire Mario, so art that only appears past the first pit (the fire
+    flower, the hard blocks, the flagpole) is included rather than missed.
     """
     ref = open(reference_rom, "rb").read()
     work = bytearray(working_rom)
@@ -494,8 +590,8 @@ def blank_unused_chr_verified(reference_rom, working_rom, usage):
             off = CHR_SP_BASE + i * 16
             work[off:off + 16] = b"\x00" * 16
 
-    restored = []
     scratch = os.path.join(BUILD, "rom", "chr_probe.nes")
+    restored = []
     for _ in range(8):
         with open(scratch, "wb") as f:
             f.write(work)
@@ -517,23 +613,34 @@ def blank_unused_chr_verified(reference_rom, working_rom, usage):
             work[off:off + 16] = ref[off:off + 16]
             restored.append((table, i))
 
-    # Any tile still reported dead at this point was already empty in the
-    # reference ROM, so it is not missing art -- SMB1 legitimately draws two
-    # empty tiles (the blank cell the screen is cleared with, and an empty 8x8
-    # in Mario's sprite set). Report them so the output is not mistaken for an
-    # unresolved repair.
     with open(scratch, "wb") as f:
         f.write(work)
+
+    # Tiles still drawn while blank at this point were already empty in the
+    # reference ROM, so they are not missing art. SMB1 legitimately draws two
+    # such tiles: the blank cell the screen is cleared with, and an empty 8x8 in
+    # Mario's sprite set.
     leftover = find_drawn_but_blank(scratch)
     ref_dead = find_drawn_but_blank(reference_rom)
     leftover = {k: [t for t in v if t not in set(ref_dead.get(k, []))]
                 for k, v in leftover.items()}
 
-    # Final gate: the blanked build must render the same screens as the
-    # reference. This is what catches anything the loop above cannot see.
-    with open(scratch, "wb") as f:
-        f.write(work)
-    if not _probe_equivalent(probe_chr(reference_rom), probe_chr(scratch)):
+    # Gate: no tile the game's data tables can point at may be left blank. The
+    # screen comparison below only covers what a run produced, and a run cannot
+    # produce everything -- the fire flower needs a mushroom first, and the flag
+    # needs the end of the level. Those are exactly the tiles that got erased
+    # before, so the tables get checked by name as well.
+    for table, base in (("bg", CHR_BG_BASE), ("sp", CHR_SP_BASE)):
+        for t in usage.get(table, []):
+            off = base + t * 16
+            if work[off:off + 16] == b"\x00" * 16 and ref[off:off + 16] != b"\x00" * 16:
+                raise SystemExit(
+                    "error: CHR tile %s#%d is referenced by the game's tables but was"
+                    " left blank" % (table, t))
+
+    # Final gate: the blanked build must render the same picture as the
+    # unblanked reference, on every page of the level and on every screen.
+    if _sweep_hashes(scratch) != _sweep_hashes(reference_rom):
         raise SystemExit(
             "error: blanked CHR does not render identically to the unblanked build;"
             " refusing to emit a ROM that looks different")
@@ -616,7 +723,7 @@ def main(argv=None):
         reference = os.path.join(BUILD, "rom", "chr_reference.nes")
         shutil.copyfile(out_path, reference)
 
-        usage = harvest_chr_usage(reference)
+        usage = harvest_chr_usage(reference, labels_path_for(mapfile))
         blanked_rom, n, restored, leftover = blank_unused_chr_verified(
             reference, open(reference, "rb").read(), usage)
         with open(out_path, "wb") as f:
